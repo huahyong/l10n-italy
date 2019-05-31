@@ -19,7 +19,6 @@
         'l10n_it_fiscalcode',
         'document',
         'l10n_it_ipa',
-        'l10n_it_rea',
         'base_iban',
         'l10n_it_account_tax_kind',
         'l10n_it_esigibilita_iva',
