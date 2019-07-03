@@ -8,6 +8,8 @@
 import base64
 import logging
 import os
+import string
+import random
 
 from odoo import api, fields, models
 from odoo.tools.translate import _
@@ -56,6 +58,13 @@ except ImportError as err:
     _logger.debug(err)
 
 
+def id_generator(
+    size=5, chars=string.ascii_uppercase + string.digits +
+    string.ascii_lowercase
+):
+    return ''.join(random.choice(chars) for dummy in range(size))
+
+
 class WizardExportFatturapa(models.TransientModel):
     _name = "wizard.export.fatturapa"
     _description = "Export E-invoice"
@@ -85,50 +94,30 @@ class WizardExportFatturapa(models.TransientModel):
         help='This report will be automatically included in the created XML')
 
     def saveAttachment(self, fatturapa, number):
-
-        company = self.env.user.company_id
-
-        if not company.vat:
-            raise UserError(
-                _('Company %s TIN not set.') % company.name)
-        if (
-            company.fatturapa_sender_partner and not
-            company.fatturapa_sender_partner.vat
-        ):
-            raise UserError(
-                _('Partner %s TIN not set.')
-                % company.fatturapa_sender_partner.name
-            )
-        vat = company.vat
-        if company.fatturapa_sender_partner:
-            vat = company.fatturapa_sender_partner.vat
-        vat = vat.replace(' ', '').replace('.', '').replace('-', '')
         attach_obj = self.env['fatturapa.attachment.out']
+        vat = attach_obj.get_file_vat()
         attach_vals = {
-            'name': '%s_%s.xml' % (vat, str(number)),
-            'datas_fname': '%s_%s.xml' % (vat, str(number)),
+            'name': '%s_%s.xml' % (vat, number),
+            'datas_fname': '%s_%s.xml' % (vat, number),
             'datas': base64.encodestring(fatturapa.toxml("UTF-8")),
         }
         return attach_obj.create(attach_vals)
 
     def setProgressivoInvio(self, fatturapa):
 
-        company = self.env.user.company_id
-        fatturapa_sequence = company.fatturapa_sequence_id
-        if not fatturapa_sequence:
-            raise UserError(
-                _('E-invoice sequence not configured.'))
-        number = fatturapa_sequence.next_by_id()
+        file_id = id_generator()
+        while self.env['fatturapa.attachment.out'].file_name_exists(file_id):
+            file_id = id_generator()
         try:
             fatturapa.FatturaElettronicaHeader.DatiTrasmissione.\
-                ProgressivoInvio = number
+                ProgressivoInvio = file_id
         except (SimpleFacetValueError, SimpleTypeValueError) as e:
             msg = _(
                 'FatturaElettronicaHeader.DatiTrasmissione.'
                 'ProgressivoInvio:\n%s'
             ) % str(e)
             raise UserError(msg)
-        return number
+        return file_id
 
     def _setIdTrasmittente(self, company, fatturapa):
 
@@ -627,62 +616,66 @@ class WizardExportFatturapa(models.TransientModel):
         if uom_precision < 2:
             uom_precision = 2
         for line in invoice.invoice_line_ids:
-            if not line.invoice_line_tax_ids:
-                raise UserError(
-                    _("Invoice line %s does not have tax.") % line.name)
-            if len(line.invoice_line_tax_ids) > 1:
-                raise UserError(
-                    _("Too many taxes for invoice line %s.") % line.name)
-            aliquota = line.invoice_line_tax_ids[0].amount
-            AliquotaIVA = '%.2f' % (aliquota)
-            line.ftpa_line_number = line_no
-            prezzo_unitario = self._get_prezzo_unitario(line)
-            DettaglioLinea = DettaglioLineeType(
-                NumeroLinea=str(line_no),
-                # can't insert newline with pyxb
-                # see https://tinyurl.com/ycem923t
-                # and '&#10;' would not be correctly visualized anyway
-                # (for example firefox replaces '&#10;' with space)
-                Descrizione=line.name.replace('\n', ' ').encode(
-                    'latin', 'ignore').decode('latin'),
-                PrezzoUnitario='{prezzo:.{precision}f}'.format(
-                    prezzo=prezzo_unitario, precision=price_precision),
-                Quantita='{qta:.{precision}f}'.format(
-                    qta=line.quantity, precision=uom_precision),
-                UnitaMisura=line.uom_id and (
-                    unidecode(line.uom_id.name)) or None,
-                PrezzoTotale='%.2f' % line.price_subtotal,
-                AliquotaIVA=AliquotaIVA)
-            DettaglioLinea.ScontoMaggiorazione.extend(
-                self.setScontoMaggiorazione(line))
-            if aliquota == 0.0:
-                if not line.invoice_line_tax_ids[0].kind_id:
-                    raise UserError(
-                        _("No 'nature' field for tax %s.") %
-                        line.invoice_line_tax_ids[0].name)
-                DettaglioLinea.Natura = line.invoice_line_tax_ids[
-                    0
-                ].kind_id.code
-            if line.admin_ref:
-                DettaglioLinea.RiferimentoAmministrazione = line.admin_ref
-            if line.product_id:
-                if line.product_id.default_code:
-                    CodiceArticolo = CodiceArticoloType(
-                        CodiceTipo=self.env['ir.config_parameter'].sudo(
-                        ).get_param('fatturapa.codicetipo.odoo', 'ODOO'),
-                        CodiceValore=line.product_id.default_code
-                    )
-                    DettaglioLinea.CodiceArticolo.append(CodiceArticolo)
-                if line.product_id.barcode:
-                    CodiceArticolo = CodiceArticoloType(
-                        CodiceTipo='EAN',
-                        CodiceValore=line.product_id.barcode
-                    )
-                    DettaglioLinea.CodiceArticolo.append(CodiceArticolo)
+            self.setDettaglioLinea(
+                line_no, line, body, price_precision, uom_precision)
             line_no += 1
 
-            body.DatiBeniServizi.DettaglioLinee.append(DettaglioLinea)
-
+    def setDettaglioLinea(
+        self, line_no, line, body, price_precision, uom_precision
+    ):
+        if not line.invoice_line_tax_ids:
+            raise UserError(
+                _("Invoice line %s does not have tax.") % line.name)
+        if len(line.invoice_line_tax_ids) > 1:
+            raise UserError(
+                _("Too many taxes for invoice line %s.") % line.name)
+        aliquota = line.invoice_line_tax_ids[0].amount
+        AliquotaIVA = '%.2f' % (aliquota)
+        line.ftpa_line_number = line_no
+        prezzo_unitario = self._get_prezzo_unitario(line)
+        DettaglioLinea = DettaglioLineeType(
+            NumeroLinea=str(line_no),
+            # can't insert newline with pyxb
+            # see https://tinyurl.com/ycem923t
+            # and '&#10;' would not be correctly visualized anyway
+            # (for example firefox replaces '&#10;' with space)
+            Descrizione=line.name.replace('\n', ' ').replace('\t', ' ').
+            replace('\r', ' ').encode('latin', 'ignore').decode('latin'),
+            PrezzoUnitario='{prezzo:.{precision}f}'.format(
+                prezzo=prezzo_unitario, precision=price_precision),
+            Quantita='{qta:.{precision}f}'.format(
+                qta=line.quantity, precision=uom_precision),
+            UnitaMisura=line.uom_id and (
+                unidecode(line.uom_id.name)) or None,
+            PrezzoTotale='%.2f' % line.price_subtotal,
+            AliquotaIVA=AliquotaIVA)
+        DettaglioLinea.ScontoMaggiorazione.extend(
+            self.setScontoMaggiorazione(line))
+        if aliquota == 0.0:
+            if not line.invoice_line_tax_ids[0].kind_id:
+                raise UserError(
+                    _("No 'nature' field for tax %s.") %
+                    line.invoice_line_tax_ids[0].name)
+            DettaglioLinea.Natura = line.invoice_line_tax_ids[
+                0
+            ].kind_id.code
+        if line.admin_ref:
+            DettaglioLinea.RiferimentoAmministrazione = line.admin_ref
+        if line.product_id:
+            if line.product_id.default_code:
+                CodiceArticolo = CodiceArticoloType(
+                    CodiceTipo=self.env['ir.config_parameter'].sudo(
+                    ).get_param('fatturapa.codicetipo.odoo', 'ODOO'),
+                    CodiceValore=line.product_id.default_code
+                )
+                DettaglioLinea.CodiceArticolo.append(CodiceArticolo)
+            if line.product_id.barcode:
+                CodiceArticolo = CodiceArticoloType(
+                    CodiceTipo='EAN',
+                    CodiceValore=line.product_id.barcode
+                )
+                DettaglioLinea.CodiceArticolo.append(CodiceArticolo)
+        body.DatiBeniServizi.DettaglioLinee.append(DettaglioLinea)
         return True
 
     def setScontoMaggiorazione(self, line):
@@ -744,22 +737,26 @@ class WizardExportFatturapa(models.TransientModel):
                 move_line = move_line_pool.browse(move_line_id)
                 ImportoPagamento = '%.2f' % (
                     move_line.amount_currency or move_line.debit)
+                # Create with only mandatory fields
                 DettaglioPagamento = DettaglioPagamentoType(
                     ModalitaPagamento=(
                         invoice.payment_term_id.fatturapa_pm_id.code),
-                    DataScadenzaPagamento=move_line.date_maturity,
                     ImportoPagamento=ImportoPagamento
                     )
-                if invoice.partner_bank_id:
-                    DettaglioPagamento.IstitutoFinanziario = (
-                        invoice.partner_bank_id.bank_name)
-                    if invoice.partner_bank_id.acc_number:
-                        DettaglioPagamento.IBAN = (
-                            ''.join(invoice.partner_bank_id.acc_number.split())
-                            )
-                    if invoice.partner_bank_id.bank_bic:
-                        DettaglioPagamento.BIC = (
-                            invoice.partner_bank_id.bank_bic)
+
+                # Add only the existing optional fields
+                if move_line.date_maturity:
+                    DettaglioPagamento.DataScadenzaPagamento = \
+                        move_line.date_maturity
+                partner_bank = invoice.partner_bank_id
+                if partner_bank.bank_name:
+                    DettaglioPagamento.IstitutoFinanziario = \
+                        partner_bank.bank_name
+                if partner_bank.acc_number:
+                    DettaglioPagamento.IBAN = \
+                        ''.join(partner_bank.acc_number.split())
+                if partner_bank.bank_bic:
+                    DettaglioPagamento.BIC = partner_bank.bank_bic
                 DatiPagamento.DettaglioPagamento.append(DettaglioPagamento)
             body.DatiPagamento.append(DatiPagamento)
         return True

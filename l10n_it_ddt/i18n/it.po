@@ -11,7 +11,7 @@ msgstr ""
 "Project-Id-Version: Odoo Server 10.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2018-05-25 05:17+0000\n"
-"PO-Revision-Date: 2019-05-24 14:19+0000\n"
+"PO-Revision-Date: 2019-06-21 15:42+0000\n"
 "Last-Translator: Lorenzo Battistini <lorenzo.battistini@agilebg.com>\n"
 "Language-Team: Italian (https://www.transifex.com/oca/teams/23907/it/)\n"
 "Language: it\n"
@@ -92,6 +92,13 @@ msgstr "<strong>Prezzo</strong>"
 #: model_terms:ir.ui.view,arch_db:l10n_it_ddt.report_ddt
 msgid "<strong>Quantity</strong>"
 msgstr "<strong>Quantità</strong>"
+
+#. module: l10n_it_ddt
+#: model_terms:ir.ui.view,arch_db:l10n_it_ddt.report_ddt
+#, fuzzy
+#| msgid "<strong>Price</strong>"
+msgid "<strong>UoM</strong>"
+msgstr "<strong>Prezzo</strong>"
 
 #. module: l10n_it_ddt
 #: model:ir.actions.act_window,name:l10n_it_ddt.action_pickings_to_ddt
@@ -242,11 +249,6 @@ msgid "Created on"
 msgstr "Creato il"
 
 #. module: l10n_it_ddt
-#: model_terms:ir.ui.view,arch_db:l10n_it_ddt.delivery_data
-msgid "Date"
-msgstr "Data"
-
-#. module: l10n_it_ddt
 #: model:ir.ui.menu,name:l10n_it_ddt.menu_stock_ddt_data
 msgid "DdT Data"
 msgstr "Dati DDT"
@@ -315,7 +317,7 @@ msgid "Display Name"
 msgstr "Nome visualizzato"
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:483
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:499
 #, python-format
 msgid "Document {d} has invoice linked"
 msgstr "Il documento {d} ha una fattura collegata"
@@ -363,6 +365,13 @@ msgid "Gross Weight"
 msgstr "Peso lordo"
 
 #. module: l10n_it_ddt
+#: model:ir.model.fields,field_description:l10n_it_ddt.field_stock_picking_package_preparation__gross_weight_uom_id
+#, fuzzy
+#| msgid "Gross Weight"
+msgid "Gross Weight UoM"
+msgstr "Peso lordo"
+
+#. module: l10n_it_ddt
 #: model_terms:ir.ui.view,arch_db:l10n_it_ddt.ddt_stock_picking_package_preparation_search
 msgid "Group By"
 msgstr "Raggruppa per"
@@ -381,7 +390,7 @@ msgid "ID"
 msgstr "ID"
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:184
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:200
 #, python-format
 msgid "Impossible to put in pack a package without details"
 msgstr "Impossibile creare un collo senza dettagli"
@@ -498,7 +507,14 @@ msgid "Net Weight"
 msgstr "Peso netto"
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:196
+#: model:ir.model.fields,field_description:l10n_it_ddt.field_stock_picking_package_preparation__weight_manual_uom_id
+#, fuzzy
+#| msgid "Net Weight"
+msgid "Net Weight UoM"
+msgstr "Peso netto"
+
+#. module: l10n_it_ddt
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:212
 #, python-format
 msgid "Not every picking is in done status"
 msgstr "Non tutti i prelievi si trovano nello stato «Completato»"
@@ -580,13 +596,13 @@ msgid "Pickings"
 msgstr "Prelievi"
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:309
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:325
 #, python-format
 msgid "Please define an accounting sale journal for this company."
 msgstr "Definire un registro contabile di vendita per questa azienda."
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:609
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:625
 #, python-format
 msgid ""
 "Please define income account for this product: \"%s\" (id:%d) - or for its "
@@ -630,7 +646,7 @@ msgid "Related TDs"
 msgstr "DDT collegati"
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:274
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:290
 #, python-format
 msgid "Relevant period:"
 msgstr "Periodo di competenza:"
@@ -682,7 +698,7 @@ msgid "Selected Picking %s have different Partner"
 msgstr "Il prelievo %s selezionato ha un partner diverso"
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:168
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:184
 #, python-format
 msgid "Selected Picking is already linked to TD: %s"
 msgstr "Il prelievo selezionato è già collegato al DDT: %s"
@@ -775,6 +791,11 @@ msgid "Shipping Partner"
 msgstr "Partner di spedizione"
 
 #. module: l10n_it_ddt
+#: model_terms:ir.ui.view,arch_db:l10n_it_ddt.delivery_data
+msgid "Shipping date"
+msgstr "Data di spedizione"
+
+#. module: l10n_it_ddt
 #: model:ir.model.fields,help:l10n_it_ddt.field_res_partner__ddt_show_price
 #: model:ir.model.fields,help:l10n_it_ddt.field_res_users__ddt_show_price
 msgid "Show prices and         discounts in TD report"
@@ -806,6 +827,16 @@ msgid "Stock TD Type"
 msgstr "Tipo DDT di magazzino"
 
 #. module: l10n_it_ddt
+#: model:ir.model.fields,field_description:l10n_it_ddt.field_stock_picking__ddt_supplier_date
+msgid "Supplier TD Date"
+msgstr "Data DDT fornitore"
+
+#. module: l10n_it_ddt
+#: model:ir.model.fields,field_description:l10n_it_ddt.field_stock_picking__ddt_supplier_number
+msgid "Supplier TD Number"
+msgstr "Numero DDT fornitore"
+
+#. module: l10n_it_ddt
 #: code:addons/l10n_it_ddt/wizard/add_picking_to_ddt.py:95
 #: code:addons/l10n_it_ddt/wizard/ddt_from_picking.py:211
 #: model:ir.actions.report,name:l10n_it_ddt.action_report_ddt
@@ -832,6 +863,11 @@ msgstr "DDT Crea fattura"
 #: model_terms:ir.ui.view,arch_db:l10n_it_ddt.ddt_stock_picking_package_preparation_search
 msgid "TD Date"
 msgstr "Data DDT"
+
+#. module: l10n_it_ddt
+#: model_terms:ir.ui.view,arch_db:l10n_it_ddt.view_picking_form
+msgid "TD Info"
+msgstr "Informazioni DDT"
 
 #. module: l10n_it_ddt
 #: code:addons/l10n_it_ddt/wizard/ddt_invoicing.py:52
@@ -909,8 +945,8 @@ msgid "Taxes"
 msgstr "Imposte"
 
 #. module: l10n_it_ddt
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:413
-#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:421
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:429
+#: code:addons/l10n_it_ddt/models/stock_picking_package_preparation.py:437
 #, python-format
 msgid "There is no invoiceable line."
 msgstr "Non ci sono righe fatturabili."
@@ -986,6 +1022,13 @@ msgid "Volume"
 msgstr "Volume"
 
 #. module: l10n_it_ddt
+#: model:ir.model.fields,field_description:l10n_it_ddt.field_stock_picking_package_preparation__volume_uom_id
+#, fuzzy
+#| msgid "Volume"
+msgid "Volume UoM"
+msgstr "Volume"
+
+#. module: l10n_it_ddt
 #: model:ir.model.fields,field_description:l10n_it_ddt.field_account_invoice__weight
 #: model:ir.model.fields,field_description:l10n_it_ddt.field_sale_order__weight
 msgid "Weight"
@@ -998,6 +1041,9 @@ msgstr "Peso"
 #: model_terms:ir.ui.view,arch_db:l10n_it_ddt.view_ddt_invoicing
 msgid "or"
 msgstr "o"
+
+#~ msgid "Date"
+#~ msgstr "Data"
 
 #~ msgid "${object.subject}"
 #~ msgstr "${object.subject}"

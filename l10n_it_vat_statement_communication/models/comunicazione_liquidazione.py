@@ -225,8 +225,8 @@ class ComunicazioneLiquidazione(models.Model):
         # Codice Fornitura
         x1_1_1_CodiceFornitura = etree.SubElement(
             x1_1_Intestazione, etree.QName(NS_IV, "CodiceFornitura"))
-        code = str(self.year)[-2:]
-        x1_1_1_CodiceFornitura.text = str('IVP{}'.format(code))
+        code = self.company_id.vsc_supply_code
+        x1_1_1_CodiceFornitura.text = code
         # Codice Fiscale Dichiarante
         if self.declarant_fiscalcode:
             x1_1_2_CodiceFiscaleDichiarante = etree.SubElement(
@@ -549,6 +549,8 @@ class ComunicazioneLiquidazioneVp(models.Model):
         for debit in liq.debit_vat_account_line_ids:
             debit_taxes |= debit.tax_id
         for debit_tax in debit_taxes:
+            if debit_tax.vsc_exclude_operation:
+                continue
             tax = debit_taxes.with_context(
                 self._get_tax_context(period)).browse(debit_tax.id)
             self.imponibile_operazioni_attive += (
@@ -560,6 +562,8 @@ class ComunicazioneLiquidazioneVp(models.Model):
         for credit in liq.credit_vat_account_line_ids:
             credit_taxes |= credit.tax_id
         for credit_tax in credit_taxes:
+            if credit_tax.vsc_exclude_operation:
+                continue
             tax = credit_taxes.with_context(
                 self._get_tax_context(period)).browse(credit_tax.id)
             self.imponibile_operazioni_passive -= (
@@ -584,9 +588,13 @@ class ComunicazioneLiquidazioneVp(models.Model):
 
                 # Iva esigibile
                 for vat_amount in liq.debit_vat_account_line_ids:
+                    if vat_amount.tax_id.vsc_exclude_vat:
+                        continue
                     quadro.iva_esigibile += vat_amount.amount
                 # Iva detratta
                 for vat_amount in liq.credit_vat_account_line_ids:
+                    if vat_amount.tax_id.vsc_exclude_vat:
+                        continue
                     quadro.iva_detratta += vat_amount.amount
                 # credito/debito periodo precedente
                 quadro.debito_periodo_precedente =\

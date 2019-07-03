@@ -286,12 +286,19 @@ class WizardImportFatturapa(models.TransientModel):
                     ('type_tax_use', '=', 'purchase'),
                     ('kind_id.code', '=', line.Natura),
                     ('amount', '=', 0.0),
-                ], order='sequence', limit=1)
+                ], order='sequence')
             if not account_taxes:
                 self.log_inconsistency(
                     _('No tax with percentage '
                       '%s and nature %s found. Please configure this tax.')
                     % (line.AliquotaIVA, line.Natura))
+            if len(account_taxes) > 1:
+                self.log_inconsistency(
+                    _('Too many taxes with percentage '
+                      '%s and nature %s found. Tax %s with lower priority has '
+                      'been set on invoice lines.')
+                    % (line.AliquotaIVA, line.Natura,
+                       account_taxes[0].description))
         else:
             account_taxes = account_tax_model.search(
                 [
@@ -313,9 +320,9 @@ class WizardImportFatturapa(models.TransientModel):
             if len(account_taxes) > 1:
                 # just logging because this is an usual case: see split payment
                 _logger.warning(_(
-                    "Line '%s': Too many taxes with percentage equals "
+                    "Too many taxes with percentage equals "
                     "to '%s'.\nFix it if required"
-                ) % (line.Descrizione, line.AliquotaIVA))
+                ) % line.AliquotaIVA)
                 # if there are multiple taxes with same percentage
                 # and there is a default tax with this percentage,
                 # set taxes list equal to supplier_taxes_id, loaded before
@@ -408,7 +415,7 @@ class WizardImportFatturapa(models.TransientModel):
 
         return retLine
 
-    def _prepareRelDocsLine(self, invoice_id, line, type):
+    def _prepareRelDocsLine(self, invoice_id, line, doc_type):
         res = []
         lineref = line.RiferimentoNumeroLinea or False
         IdDoc = line.IdDocumento or 'Error'
@@ -430,7 +437,7 @@ class WizardImportFatturapa(models.TransientModel):
                 if invoice_lines:
                     invoice_lineid = invoice_lines[0].id
                 val = {
-                    'type': type,
+                    'type': doc_type,
                     'name': IdDoc,
                     'lineRef': numline,
                     'invoice_line_id': invoice_lineid,
@@ -444,7 +451,7 @@ class WizardImportFatturapa(models.TransientModel):
                 res.append(val)
         else:
             val = {
-                'type': type,
+                'type': doc_type,
                 'name': IdDoc,
                 'invoice_line_id': invoice_lineid,
                 'invoice_id': invoice_id,
@@ -509,14 +516,14 @@ class WizardImportFatturapa(models.TransientModel):
 
         return res
 
-    def _prepareDiscRisePriceLine(self, id, line):
+    def _prepareDiscRisePriceLine(self, line_id, line):
         Tipo = line.Tipo or False
         Percentuale = line.Percentuale and float(line.Percentuale) or 0.0
         Importo = line.Importo and float(line.Importo) or 0.0
         res = {
             'percentage': Percentuale,
             'amount': Importo,
-            self.env.context.get('drtype'): id,
+            self.env.context.get('drtype'): line_id,
         }
         res['name'] = Tipo
 
@@ -927,6 +934,32 @@ class WizardImportFatturapa(models.TransientModel):
                 WalferLineVals = self._prepareWelfareLine(
                     invoice_id, walfareLine)
                 WelfareFundLineModel.create(WalferLineVals)
+                line_vals = self._prepare_generic_line_data(walfareLine)
+                line_vals.update({
+                    'name': _(
+                        "Welfare Fund: %s") % walfareLine.TipoCassa,
+                    'price_unit': float(walfareLine.ImportoContributoCassa),
+                    'invoice_id': invoice.id,
+                    'account_id': credit_account_id,
+                })
+                if walfareLine.Ritenuta:
+                    if not wt_found:
+                        raise UserError(_(
+                            "Welfare Fund data %s has withholding tax but no "
+                            "withholding tax was found in the system."
+                            % walfareLine.TipoCassa))
+                    line_vals['invoice_line_tax_wt_ids'] = [
+                        (6, 0, [wt_found.id])]
+                if self.env.user.company_id.cassa_previdenziale_product_id:
+                    cassa_previdenziale_product = (
+                        self.env.user.company_id.cassa_previdenziale_product_id
+                    )
+                    line_vals['product_id'] = cassa_previdenziale_product.id
+                    line_vals['name'] = cassa_previdenziale_product.name
+                    self.adjust_accounting_data(
+                        cassa_previdenziale_product, line_vals
+                    )
+                self.env['account.invoice.line'].create(line_vals)
 
         # 2.1.2
         relOrders = FatturaBody.DatiGenerali.DatiOrdineAcquisto

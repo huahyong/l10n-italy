@@ -90,7 +90,11 @@ class StockPickingPackagePreparation(models.Model):
         return self.env['stock.ddt.type'].search([], limit=1)
 
     ddt_type_id = fields.Many2one(
-        'stock.ddt.type', string='TD Type', default=_default_ddt_type)
+        'stock.ddt.type', string='TD Type', default=_default_ddt_type,
+        states={
+            'done': [('readonly', True)],
+            'cancel': [('readonly', True)]
+        })
     ddt_number = fields.Char(string='TD Number', copy=False)
     partner_shipping_id = fields.Many2one(
         'res.partner', string="Shipping Address")
@@ -111,6 +115,10 @@ class StockPickingPackagePreparation(models.Model):
     display_name = fields.Char(
         string='Name', compute='_compute_clean_display_name')
     volume = fields.Float('Volume')
+    volume_uom_id = fields.Many2one(
+        'uom.uom', 'Volume UoM',
+        default=lambda self: self.env.ref(
+            'uom.product_uom_litre', raise_if_not_found=False))
     invoice_id = fields.Many2one(
         'account.invoice', string='Invoice', readonly=True, copy=False)
     to_be_invoiced = fields.Boolean(
@@ -122,7 +130,15 @@ class StockPickingPackagePreparation(models.Model):
         string="Force Net Weight",
         help="Fill this field with the value you want to be used as weight. "
              "Leave empty to let the system to compute it")
+    weight_manual_uom_id = fields.Many2one(
+        'uom.uom', 'Net Weight UoM',
+        default=lambda self: self.env.ref(
+            'uom.product_uom_kgm', raise_if_not_found=False))
     gross_weight = fields.Float(string="Gross Weight")
+    gross_weight_uom_id = fields.Many2one(
+        'uom.uom', 'Gross Weight UoM',
+        default=lambda self: self.env.ref(
+            'uom.product_uom_kgm', raise_if_not_found=False))
     check_if_picking_done = fields.Boolean(
         compute='_compute_check_if_picking_done',
         )
@@ -174,7 +190,7 @@ class StockPickingPackagePreparation(models.Model):
         # ----- Check if exist a stock picking whose state is 'done'
         for record_picking in self.picking_ids:
             if record_picking.state == 'done':
-                raise UserError((
+                raise UserError(_(
                     "Impossible to put in pack a picking whose state "
                     "is 'done'"))
         for package in self:
@@ -350,6 +366,31 @@ class StockPickingPackagePreparation(models.Model):
         return res
 
     @api.multi
+    def other_operations_on_ddt(self, invoice):
+        """ Once invoices are created with stockable products, we add them
+        all the invoiceable services available in the SO related to the
+        DDTs linked to the invoice.
+
+        Override this method in order to execute other additional operation on
+        the invoices created from DDT.
+        """
+        precision = self.env['decimal.precision'].precision_get(
+            'Product Unit of Measure')
+        for ddt in self:
+            order_ids = ddt.line_ids.mapped('sale_line_id.order_id').filtered(
+                lambda o: not o.ddt_invoice_exclude)
+            line_ids = order_ids.mapped('order_line').filtered(
+                lambda l: not float_is_zero(
+                    l.qty_to_invoice, precision_digits=precision) and
+                l.product_id.type == 'service' and
+                not l.product_id.ddt_invoice_exclude)
+
+            # we call the Sale method for creating invoice
+            for line in line_ids:
+                qty = line.qty_to_invoice
+                line.invoice_line_create(invoice.id, qty)
+
+    @api.multi
     def action_invoice_create(self):
         """
         Create the invoice associated to the DDT.
@@ -408,6 +449,9 @@ class StockPickingPackagePreparation(models.Model):
             if references.get(invoices.get(group_key)):
                 if ddt not in references[invoices[group_key]]:
                     references[invoice] = references[invoice] | ddt
+
+            # Allow additional operations from ddt
+            ddt.other_operations_on_ddt(invoice)
 
         if not invoices:
             raise UserError(_('There is no invoiceable line.'))
@@ -675,12 +719,12 @@ class StockPickingPackagePreparationLine(models.Model):
         to its quantity (if the product is tracked with lots)"""
         self.ensure_one()
         res = {}
-        for quant in self.lot_ids.mapped('quant_ids'):
-            if quant.location_id == self.move_id.location_dest_id:
-                if quant.lot_id not in res:
-                    res[quant.lot_id] = quant.quantity
+        for move_line in self.move_id.move_line_ids:
+            if move_line.lot_id:
+                if move_line.lot_id not in res:
+                    res[move_line.lot_id] = move_line.qty_done
                 else:
-                    res[quant.lot_id] += quant.quantity
+                    res[move_line.lot_id] += move_line.qty_done
         for lot in res:
             if lot.product_id.tracking == 'lot':
                 res[lot] = formatLang(self.env, res[lot])

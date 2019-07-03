@@ -83,6 +83,75 @@ class TestDdt(TransactionCase):
         line._convert_to_write(line._cache)
         return line
 
+    def _create_product_and_lots(self):
+        product = self.env['product.product'].create({
+            'name': 'Lots product',
+            'tracking': 'lot',
+            'type': 'product',
+        })
+        lot1 = self.env['stock.production.lot'].create({
+            'name': '0000001',
+            'product_id': product.id,
+        })
+        lot2 = self.env['stock.production.lot'].create({
+            'name': '0000002',
+            'product_id': product.id,
+        })
+        inventory = self.env['stock.inventory'].create({
+            'name': 'Lots product inventory',
+            'filter': 'product',
+            'product_id': product.id,
+        })
+        inventory.action_start()
+        inventory.line_ids = [
+            (0, 0, {
+                'product_id': product.id,
+                'prod_lot_id': lot1.id,
+                'product_qty': 10,
+                'location_id': inventory.location_id.id,
+            }),
+            (0, 0, {
+                'product_id': product.id,
+                'prod_lot_id': lot2.id,
+                'product_qty': 10,
+                'location_id': inventory.location_id.id,
+            }),
+        ]
+        inventory.action_validate()
+        return product, lot1, lot2
+
+    def _process_picking_with_lots(
+        self, product, lot1, lot2, lot1_qty, lot2_qty
+    ):
+        picking = self.env['stock.picking'].create(self._get_picking_vals())
+        picking.move_ids_without_package = [(0, 0, {
+            'product_id': product.id,
+            'name': product.name,
+            'product_uom_qty': 6,
+            'product_uom': product.uom_id.id,
+            'pcking_type_id': picking.picking_type_id,
+            'location_id': picking.location_id,
+            'location_dest_id': picking.location_dest_id,
+        })]
+        picking.action_confirm()
+        picking.action_assign()
+        move = picking.move_ids_without_package[0]
+        move_line = move.move_line_ids[0]
+        move_line.lot_id = lot1.id
+        move_line.qty_done = lot1_qty
+        move.move_line_ids = [
+            (0, 0, {
+                'product_uom_id': move.product_uom.id,
+                'product_id': product.id,
+                'location_id': picking.location_id,
+                'location_dest_id': picking.location_dest_id,
+                'qty_done': lot2_qty,
+                'lot_id': lot2.id,
+            }),
+        ]
+        picking.button_validate()
+        return picking
+
     def setUp(self):
         super(TestDdt, self).setUp()
         self.carriage_condition_PF = self.env.ref(
@@ -108,6 +177,8 @@ class TestDdt(TransactionCase):
         self.partner2 = self.env.ref('base.res_partner_3')
         self.product1 = self.env.ref('product.product_product_25')
         self.product2 = self.env.ref('product.product_product_27')
+        # Virtual Interior Design
+        self.product3 = self.env.ref('product.product_product_1')
         self.ddt_model = self.env['stock.picking.package.preparation']
         self.picking = self._create_picking()
         self.move = self._create_move(self.picking, self.product1)
@@ -447,3 +518,54 @@ class TestDdt(TransactionCase):
         ddt.action_put_in_pack()
         ddt.action_done()
         self.assertEqual(ddt.line_ids[0].price_unit, 3)
+
+    def test_order_with_service(self):
+        order1 = self._create_sale_order()
+        self.product3.ddt_invoice_exclude = False
+        self.product3.invoice_policy = 'order'
+        self._create_sale_order_line(order1, self.product1)
+        self._create_sale_order_line(order1, self.product3)
+        order1.create_ddt = True
+        order1.action_confirm()
+        ddt1 = order1.ddt_ids[0]
+        invoice_wizard = self.env['ddt.create.invoice'].with_context(
+            {'active_ids': [ddt1.id]}).create({})
+        action = invoice_wizard.create_invoice()
+        invoice_ids = action['domain'][0][2]
+        invoice = self.env['account.invoice'].browse(invoice_ids[0])
+        self.assertEqual(len(invoice.invoice_line_ids), 2)
+
+        order2 = self._create_sale_order()
+        self.product3.ddt_invoice_exclude = True
+        self._create_sale_order_line(order2, self.product1)
+        self._create_sale_order_line(order2, self.product3)
+        order2.create_ddt = True
+        order2.action_confirm()
+        ddt2 = order2.ddt_ids[0]
+        invoice_wizard = self.env['ddt.create.invoice'].with_context(
+            {'active_ids': [ddt2.id]}).create({})
+        action = invoice_wizard.create_invoice()
+        invoice_ids = action['domain'][0][2]
+        invoice = self.env['account.invoice'].browse(invoice_ids[0])
+        self.assertEqual(len(invoice.invoice_line_ids), 1)
+
+    def test_delivered_lots(self):
+        product, lot1, lot2 = self._create_product_and_lots()
+
+        picking1 = self._process_picking_with_lots(
+            product, lot1, lot2, 3, 3)
+        wizard = self.env['ddt.from.pickings'].with_context({
+            'active_ids': [picking1.id]}).create({})
+        res = wizard.create_ddt()
+        ddt1 = self.ddt_model.browse(res['res_id'])
+        quantity_by_lot = ddt1.line_ids[0].quantity_by_lot()
+        self.assertEqual(quantity_by_lot, {lot1: '3.00', lot2: '3.00'})
+
+        picking2 = self._process_picking_with_lots(
+            product, lot1, lot2, 4, 2)
+        wizard = self.env['ddt.from.pickings'].with_context({
+            'active_ids': [picking2.id]}).create({})
+        res = wizard.create_ddt()
+        ddt2 = self.ddt_model.browse(res['res_id'])
+        quantity_by_lot = ddt2.line_ids[0].quantity_by_lot()
+        self.assertEqual(quantity_by_lot, {lot1: '4.00', lot2: '2.00'})
